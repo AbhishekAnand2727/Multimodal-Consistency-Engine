@@ -1,0 +1,22 @@
+# Claude
+.claude/
+claude.md
+CLAUDE.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Jobs / temp files
+jobs/
+
+# OS
+.DS_Store
+Thumbs.db

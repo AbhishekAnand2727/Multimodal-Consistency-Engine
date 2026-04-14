@@ -1,0 +1,30 @@
+# Core
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Video/Audio preprocessing
+opencv-python>=4.8.0
+ffmpeg-python>=0.2.0
+
+# Face analysis
+deepface>=0.0.79
+tf-keras
+
+# Audio analysis
+librosa>=0.10.0
+soundfile>=0.12.0
+praat-parselmouth>=0.4.3
+
+# Gender classification (wav2vec2-based)
+transformers>=4.35.0
+
+# ML / Numerical
+numpy>=1.24.0
+scipy>=1.11.0
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Utilities
+pydantic>=2.0.0
+loguru>=0.7.0
