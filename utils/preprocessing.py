@@ -11,9 +11,12 @@ import numpy as np
 from loguru import logger
 
 
+TARGET_FRAMES = 50
+
+
 def extract_frames(video_path: str, fps: float = 2.0) -> list[np.ndarray]:
     """
-    Extract frames from video at the given FPS rate.
+    Extract frames from video using uniform sampling (constant frame count).
     Returns list of BGR frames (OpenCV format).
     """
     cap = cv2.VideoCapture(video_path)
@@ -21,29 +24,23 @@ def extract_frames(video_path: str, fps: float = 2.0) -> list[np.ndarray]:
         raise ValueError(f"Cannot open video: {video_path}")
 
     try:
-        video_fps = cap.get(cv2.CAP_PROP_FPS)
-        if video_fps <= 0:
-            raise ValueError(f"Invalid video FPS: {video_fps}")
-
-        # Sample every N-th frame to achieve target FPS
-        frame_interval = max(1, int(round(video_fps / fps)))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+        if total_frames < TARGET_FRAMES:
+            indices = np.arange(total_frames)
+        else:
+            indices = np.linspace(0, total_frames - 1, TARGET_FRAMES).astype(int)
+
         logger.info(
-            f"Video: {video_fps:.1f} FPS, {total_frames} frames. "
-            f"Sampling every {frame_interval} frames (~{fps} FPS)"
+            f"Uniform sampling: total_frames={total_frames}, sampled={len(indices)}"
         )
 
         frames = []
-        frame_idx = 0
-
-        while True:
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             ret, frame = cap.read()
-            if not ret:
-                break
-            if frame_idx % frame_interval == 0:
+            if ret:
                 frames.append(frame)
-            frame_idx += 1
 
         logger.info(f"Extracted {len(frames)} frames from {video_path}")
         return frames

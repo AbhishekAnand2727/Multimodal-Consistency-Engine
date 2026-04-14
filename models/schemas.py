@@ -63,5 +63,6 @@ class EvaluationResult(BaseModel):
 class JobResponse(BaseModel):
     job_id: str
     status: JobStatus
+    progress: int = 0  # 0–5: how many backend steps have completed
     result: EvaluationResult | None = None
     error: str | None = None

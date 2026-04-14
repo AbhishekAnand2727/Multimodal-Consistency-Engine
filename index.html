@@ -566,18 +566,18 @@
         <span class="step-status">Waiting</span>
       </div>
       <div class="step" id="step-1">
-        <div class="step-icon">👤</div>
-        <span class="step-label">Running face analysis (DeepFace)</span>
+        <div class="step-icon">🎙</div>
+        <span class="step-label">Extracting audio track</span>
         <span class="step-status">Waiting</span>
       </div>
       <div class="step" id="step-2">
-        <div class="step-icon">🎙</div>
-        <span class="step-label">Extracting audio features (VAD + segments)</span>
+        <div class="step-icon">👤</div>
+        <span class="step-label">Face analysis — DeepFace</span>
         <span class="step-status">Waiting</span>
       </div>
       <div class="step" id="step-3">
         <div class="step-icon">🧠</div>
-        <span class="step-label">Gender classification (wav2vec2)</span>
+        <span class="step-label">Audio features + gender classification</span>
         <span class="step-status">Waiting</span>
       </div>
       <div class="step" id="step-4">
@@ -849,67 +849,123 @@
   // ── Analyze ────────────────────────────────────────────────────
   analyzeBtn.addEventListener('click', startAnalysis);
 
-  const STEPS = [
-    { label: 'Extracting frames',         duration: 600  },
-    { label: 'Running face analysis',     duration: 900  },
-    { label: 'Extracting audio features', duration: 800  },
-    { label: 'Gender classification',     duration: 700  },
-    { label: 'Computing scores',          duration: 500  },
-  ];
-
   async function startAnalysis() {
     uploadCard.style.display = 'none';
     processing.style.display = 'block';
 
-    // Run through steps sequentially
-    for (let i = 0; i < STEPS.length; i++) {
-      await runStep(i, STEPS[i].duration);
-      progress.style.width = ((i + 1) / STEPS.length * 100) + '%';
+    // Upload and get job_id
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    let jobId;
+    try {
+      const res = await fetch('/evaluate', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      jobId = (await res.json()).job_id;
+    } catch (e) {
+      resetToUpload('Upload failed: ' + e.message);
+      return;
     }
 
-    await sleep(400);
+    // Mark step 0 active — backend has started
+    setStepActive(0);
+    let lastProgress = 0;
+
+    // Poll every second; advance steps as backend progress increments
+    for (let attempt = 0; attempt < 300; attempt++) {
+      await sleep(1000);
+      let job;
+      try {
+        const res = await fetch('/result/' + jobId);
+        job = await res.json();
+      } catch (_) { continue; }
+
+      const p = job.progress || 0;
+      while (lastProgress < p) {
+        setStepDone(lastProgress);
+        lastProgress++;
+        if (lastProgress < 5) setStepActive(lastProgress);
+        progress.style.width = (lastProgress / 5 * 100) + '%';
+      }
+
+      if (job.status === 'completed') {
+        while (lastProgress < 5) { setStepDone(lastProgress++); }
+        progress.style.width = '100%';
+        await sleep(300);
+        processing.style.display = 'none';
+        showResults(mapResult(job.result));
+        return;
+      }
+      if (job.status === 'failed') {
+        resetToUpload('Evaluation failed: ' + job.error);
+        return;
+      }
+    }
+    resetToUpload('Timed out waiting for result.');
+  }
+
+  function setStepActive(idx) {
+    const step = document.getElementById('step-' + idx);
+    if (!step) return;
+    step.classList.add('active');
+    step.querySelector('.step-icon').innerHTML = '<div class="spinner"></div>';
+    step.querySelector('.step-status').textContent = 'Processing…';
+  }
+
+  function setStepDone(idx) {
+    const step = document.getElementById('step-' + idx);
+    if (!step) return;
+    step.classList.remove('active');
+    step.classList.add('done');
+    step.querySelector('.step-icon').textContent = '✓';
+    step.querySelector('.step-status').textContent = 'Done';
+  }
+
+  function resetToUpload(msg) {
     processing.style.display = 'none';
-    showResults();
+    uploadCard.style.display = 'block';
+    progress.style.width = '0%';
+    if (msg) alert(msg);
   }
 
-  function runStep(idx, duration) {
-    return new Promise(resolve => {
-      const step = document.getElementById('step-' + idx);
-      const icon = step.querySelector('.step-icon');
-      const status = step.querySelector('.step-status');
-
-      step.classList.add('active');
-      icon.innerHTML = '<div class="spinner"></div>';
-      status.textContent = 'Processing…';
-
-      setTimeout(() => {
-        step.classList.remove('active');
-        step.classList.add('done');
-        icon.textContent = '✓';
-        status.textContent = 'Done';
-        resolve();
-      }, duration);
-    });
+  function mapResult(r) {
+    const ff = r.face_features  || {};
+    const vf = r.voice_features || {};
+    return {
+      face: {
+        male:       ff.gender_dist?.male   ?? 0.5,
+        female:     ff.gender_dist?.female ?? 0.5,
+        age: {
+          child:  ff.age_dist?.child  ?? 0.2,
+          teen:   ff.age_dist?.teen   ?? 0.2,
+          adult:  ff.age_dist?.adult  ?? 0.2,
+          middle: ff.age_dist?.middle ?? 0.2,
+          senior: ff.age_dist?.senior ?? 0.2,
+        },
+        confidence: ff.confidence ?? 0,
+        frames:     0,
+      },
+      voice: {
+        male:         vf.gender_dist?.male   ?? 0.5,
+        female:       vf.gender_dist?.female ?? 0.5,
+        pitch:        vf.pitch_mean  ?? 0,
+        f1:           vf.f1_mean     ?? 0,
+        f2:           vf.f2_mean     ?? 0,
+        speech_ratio: 0,
+        feat_rate:    0,
+        confidence:   vf.confidence  ?? 0,
+        segments:     0,
+      },
+      scores: {
+        gender:     r.components?.gender  ?? 0,
+        age:        r.components?.age     ?? 0,
+        pitch:      r.components?.pitch   ?? 0,
+        formant:    r.components?.formant ?? 0,
+        raw:        r.raw_score           ?? 0,
+        confidence: r.confidence          ?? 0,
+        overall:    r.overall_score       ?? 0,
+      },
+    };
   }
-
-  // ── Dummy data ─────────────────────────────────────────────────
-  const DATA = {
-    face: {
-      male: 0.82, female: 0.18,
-      age: { child: 0.02, teen: 0.08, adult: 0.54, middle: 0.32, senior: 0.04 },
-      confidence: 0.86, frames: 47
-    },
-    voice: {
-      male: 0.65, female: 0.35,
-      pitch: 141, f1: 420, f2: 1180,
-      speech_ratio: 0.72, feat_rate: 0.88,
-      confidence: 0.79, segments: 6
-    },
-    scores: {
-      gender: 0.84, age: 0.61, pitch: 0.78, formant: 0.66,
-      raw: 0.74, confidence: 0.82, overall: 0.61
-    }
-  };
 
   function scoreColor(v) {
     if (v >= 0.70) return 'var(--green)';
@@ -931,8 +987,7 @@
     setTimeout(() => { el.style.width = (value * 100) + '%'; }, 100);
   }
 
-  function showResults() {
-    const d = DATA;
+  function showResults(d) {
     results.style.display = 'block';
 
     // Face

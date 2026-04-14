@@ -11,6 +11,8 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from models.schemas import JobResponse, JobStatus, EvaluationResult
@@ -27,6 +29,7 @@ job_timestamps: dict[str, float] = {}
 
 JOBS_DIR = Path("jobs")
 JOB_TTL_SECONDS = 3600  # 1 hour
+ROOT_DIR = Path(__file__).parent.parent  # project root (where index.html lives)
 
 
 @asynccontextmanager
@@ -69,32 +72,35 @@ def _run_evaluation(job_id: str, video_path: str) -> None:
     """
     job_dir = JOBS_DIR / job_id
 
+    def set_progress(p: int) -> None:
+        jobs[job_id] = JobResponse(job_id=job_id, status=JobStatus.PROCESSING, progress=p)
+
     try:
         logger.info(f"[{job_id}] Starting evaluation for {video_path}")
 
-        # 1. Preprocessing
         logger.info(f"[{job_id}] Extracting frames...")
         frames = extract_frames(video_path, fps=2.0)
+        set_progress(1)
 
         logger.info(f"[{job_id}] Extracting audio...")
         audio_path = extract_audio(video_path, output_dir=str(job_dir))
+        set_progress(2)
 
-        # 2. Face pipeline
         logger.info(f"[{job_id}] Running face pipeline...")
         face_features = run_face_pipeline(frames)
+        set_progress(3)
 
-        # 3. Audio pipeline
         logger.info(f"[{job_id}] Running audio pipeline...")
         voice_features = run_audio_pipeline(audio_path)
+        set_progress(4)
 
-        # 4. Scoring
         logger.info(f"[{job_id}] Computing scores...")
         result = compute_evaluation(face_features, voice_features)
 
-        # Update job
         jobs[job_id] = JobResponse(
             job_id=job_id,
             status=JobStatus.COMPLETED,
+            progress=5,
             result=result,
         )
         logger.info(f"[{job_id}] Evaluation complete. Score: {result.overall_score}")
@@ -156,3 +162,8 @@ async def get_result(job_id: str):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/")
+async def serve_ui():
+    return FileResponse(ROOT_DIR / "index.html")
