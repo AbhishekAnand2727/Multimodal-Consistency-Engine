@@ -10,27 +10,77 @@ from loguru import logger
 
 
 def apply_vad(audio: np.ndarray, sr: int, frame_length: int = 2048,
-              hop_length: int = 512, energy_threshold: float = 0.01) -> np.ndarray:
+              hop_length: int = 512, energy_threshold: float = 0.005) -> tuple[np.ndarray, float]:
     """
-    Simple energy-based Voice Activity Detection.
-    Returns audio with non-speech regions zeroed out,
-    plus a boolean mask of speech frames.
+    Energy-based Voice Activity Detection with segment merging and filtering.
+
+    Steps:
+      1. Compute per-frame RMS energy.
+      2. Threshold (fixed floor + adaptive component) to get raw speech frames.
+      3. Convert frames → speech regions (start/end sample pairs).
+      4. Merge regions whose gap is < 0.3 s (captures natural pauses in speech).
+      5. Drop regions shorter than 0.5 s (removes noise bursts).
+      6. Rebuild sample-level mask from cleaned regions.
+      7. Compute speech_ratio as total_speech_samples / total_samples.
+
+    Returns:
+      audio_masked  — original audio with non-speech zeroed out
+      speech_ratio  — fraction of audio that is speech (0–1)
     """
     rms = librosa.feature.rms(y=audio, frame_length=frame_length, hop_length=hop_length)[0]
-    # Adaptive threshold: use the higher of the fixed floor and a
-    # data-driven threshold based on the 30th percentile of RMS energy.
-    # This prevents silent/low-amplitude audio from being entirely marked as speech.
+
+    # Lower adaptive multiplier (was 3.0) so softer speech frames pass.
     adaptive_threshold = max(
         energy_threshold,
-        float(np.percentile(rms, 30)) * 3.0,
+        float(np.percentile(rms, 30)) * 1.5,
     )
     speech_frames = rms > adaptive_threshold
 
-    # Convert frame-level mask to sample-level
-    mask = np.repeat(speech_frames, hop_length)[:len(audio)]
+    # ── Convert frame mask → (start_sample, end_sample) regions ──────────
+    regions: list[tuple[int, int]] = []
+    in_speech = False
+    seg_start = 0
+    for i, active in enumerate(speech_frames):
+        sample = i * hop_length
+        if active and not in_speech:
+            seg_start = sample
+            in_speech = True
+        elif not active and in_speech:
+            regions.append((seg_start, sample))
+            in_speech = False
+    if in_speech:
+        regions.append((seg_start, min(len(speech_frames) * hop_length, len(audio))))
 
-    speech_ratio = np.mean(speech_frames)
-    logger.info(f"VAD: {speech_ratio:.1%} speech detected")
+    # ── Merge gaps < 0.3 s ────────────────────────────────────────────────
+    merge_gap = int(0.3 * sr)
+    if regions:
+        merged: list[tuple[int, int]] = [regions[0]]
+        for start, end in regions[1:]:
+            if start - merged[-1][1] < merge_gap:
+                merged[-1] = (merged[-1][0], end)
+            else:
+                merged.append((start, end))
+        regions = merged
+
+    # ── Remove regions shorter than 0.5 s ────────────────────────────────
+    min_samples = int(0.5 * sr)
+    regions = [(s, e) for s, e in regions if e - s >= min_samples]
+
+    # ── Rebuild sample-level mask ─────────────────────────────────────────
+    mask = np.zeros(len(audio), dtype=np.float32)
+    for start, end in regions:
+        mask[start:min(end, len(audio))] = 1
+
+    # ── Speech ratio based on merged/filtered regions ─────────────────────
+    total_speech = sum(e - s for s, e in regions)
+    total_samples = len(audio)
+    speech_ratio = total_speech / total_samples if total_samples > 0 else 0.0
+    total_dur = total_samples / sr
+    speech_dur = total_speech / sr
+    logger.info(
+        f"VAD: speech {speech_dur:.1f}s / {total_dur:.1f}s "
+        f"({speech_ratio:.1%}, {len(regions)} regions after merge/filter)"
+    )
 
     return audio * mask, speech_ratio
 

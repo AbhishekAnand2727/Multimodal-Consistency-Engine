@@ -63,6 +63,19 @@
     margin-top: 8px;
     font-size: 15px;
   }
+  .header-nav {
+    margin-top: 16px;
+  }
+  .header-nav a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+    border: 1px solid rgba(88,166,255,.25);
+    padding: 4px 14px;
+    border-radius: 999px;
+    transition: background .15s;
+  }
+  .header-nav a:hover { background: rgba(88,166,255,.1); }
 
   /* ── Pipeline diagram ── */
   .pipeline {
@@ -523,6 +536,9 @@
   <div class="badge">⬡ AI · Multimodal Analysis</div>
   <h1>Dubbing Evaluator</h1>
   <p>Reference-less voice-face compatibility scoring</p>
+  <div class="header-nav">
+    <a href="/dashboard">&#9641; View Dashboard</a>
+  </div>
 </header>
 
 <div class="pipeline">
@@ -1141,6 +1157,57 @@
   });
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Auto-load from dashboard "View" link (?job_id=...) ────────
+  (function() {
+    const jobId = new URLSearchParams(window.location.search).get('job_id');
+    if (!jobId) return;
+
+    // Skip upload, go straight to processing card
+    uploadCard.style.display = 'none';
+    processing.style.display = 'block';
+    setStepActive(0);
+    let lastProgress = 0;
+
+    (async function pollExisting() {
+      for (let attempt = 0; attempt < 300; attempt++) {
+        let job;
+        try {
+          const res = await fetch('/result/' + encodeURIComponent(jobId));
+          if (!res.ok) { resetToUpload('Job not found (id: ' + jobId + ')'); return; }
+          job = await res.json();
+        } catch (_) {
+          await sleep(1000);
+          continue;
+        }
+
+        // Advance step indicators to match backend progress
+        const p = job.progress || 0;
+        while (lastProgress < p) {
+          setStepDone(lastProgress);
+          lastProgress++;
+          if (lastProgress < 5) setStepActive(lastProgress);
+          progress.style.width = (lastProgress / 5 * 100) + '%';
+        }
+
+        if (job.status === 'completed') {
+          while (lastProgress < 5) { setStepDone(lastProgress++); }
+          progress.style.width = '100%';
+          await sleep(300);
+          processing.style.display = 'none';
+          showResults(mapResult(job.result));
+          return;
+        }
+        if (job.status === 'failed') {
+          resetToUpload('Evaluation failed: ' + job.error);
+          return;
+        }
+        // Still processing — wait and retry
+        await sleep(1000);
+      }
+      resetToUpload('Timed out waiting for result.');
+    })();
+  })();
 </script>
 </body>
 </html>

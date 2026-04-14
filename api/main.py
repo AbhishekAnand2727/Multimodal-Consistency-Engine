@@ -26,6 +26,8 @@ from utils.preprocessing import extract_frames, extract_audio
 jobs: dict[str, JobResponse] = {}
 # Timestamps for TTL-based cleanup (job_id → creation time)
 job_timestamps: dict[str, float] = {}
+# Original filenames for dashboard listing
+job_filenames: dict[str, str] = {}
 
 JOBS_DIR = Path("jobs")
 JOB_TTL_SECONDS = 3600  # 1 hour
@@ -134,6 +136,7 @@ async def evaluate_video(file: UploadFile = File(...)):
     # Sanitize filename to prevent path traversal attacks
     safe_name = Path(file.filename).name
     video_path = str(job_dir / safe_name)
+    job_filenames[job_id] = safe_name
     with open(video_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -159,9 +162,38 @@ async def get_result(job_id: str):
     return jobs[job_id]
 
 
+@app.get("/videos")
+async def list_videos():
+    """
+    Return summary of all completed evaluation jobs for the dashboard.
+    """
+    result = []
+    for job_id, job in jobs.items():
+        if job.status == JobStatus.COMPLETED and job.result:
+            r = job.result
+            result.append({
+                "job_id":       job_id,
+                "filename":     job_filenames.get(job_id, "unknown"),
+                "overall_score": r.overall_score,
+                "confidence":   r.confidence,
+                "components": {
+                    "gender":  r.components.gender,
+                    "age":     r.components.age,
+                    "pitch":   r.components.pitch,
+                    "formant": r.components.formant,
+                },
+            })
+    return result
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/dashboard")
+async def serve_dashboard():
+    return FileResponse(ROOT_DIR / "dashboard.html")
 
 
 @app.get("/")

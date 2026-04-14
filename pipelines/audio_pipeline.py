@@ -32,6 +32,8 @@ from utils.audio_features import (
 # Constants
 # ---------------------------------------------------------------------------
 
+TARGET_SEGMENTS = 8
+
 AGE_BUCKET_CENTERS = [6.0, 16.0, 27.5, 45.0, 72.5]
 AGE_BUCKET_BOUNDS = [(0, 12), (13, 19), (20, 35), (35, 55), (55, 100)]
 
@@ -290,16 +292,28 @@ def run_audio_pipeline(audio_path: str) -> VoiceFeatures:
     if not segments:
         return _empty_voice_features()
 
+    # Filter out segments shorter than 1 second
+    segments = [s for s in segments if len(s) / sr >= 1.0]
+    if not segments:
+        return _empty_voice_features()
+
+    # Uniform sampling — cap at TARGET_SEGMENTS
+    n_total = len(segments)
+    if n_total > TARGET_SEGMENTS:
+        indices = np.linspace(0, n_total - 1, TARGET_SEGMENTS).astype(int)
+        segments = [segments[i] for i in indices]
+
+    logger.info(f"Audio segments: total={n_total}, selected={len(segments)}")
+
     # Analyze each segment
     results = []
-    for i, seg in enumerate(segments):
+    for seg in segments:
         result = _analyze_segment(seg, sr)
         if result is not None:
             results.append(result)
 
-    n_total = len(segments)
     n_valid = len(results)
-    logger.info(f"Audio pipeline: {n_valid}/{n_total} segments produced results")
+    logger.info(f"Audio pipeline: {n_valid}/{len(segments)} segments produced results")
 
     if not results:
         return _empty_voice_features()

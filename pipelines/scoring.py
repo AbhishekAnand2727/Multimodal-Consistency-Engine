@@ -47,10 +47,10 @@ FEMALE_F1_SIGMA = 100.0
 NEUTRAL_SCORE = 0.5
 
 # --- Scoring weights ---
-WEIGHT_GENDER = 0.35
-WEIGHT_AGE = 0.30
-WEIGHT_PITCH = 0.20
-WEIGHT_FORMANT = 0.15
+WEIGHT_GENDER = 0.60
+WEIGHT_AGE = 0.10
+WEIGHT_PITCH = 0.30
+# WEIGHT_FORMANT removed — formant excluded from scoring
 
 
 def _dot_similarity(a: list[float], b: list[float]) -> float:
@@ -175,18 +175,37 @@ def compute_evaluation(face: FaceFeatures, voice: VoiceFeatures) -> EvaluationRe
     """
     gender = score_gender(face, voice)
     age = score_age(face, voice)
-    pitch = score_pitch(face, voice)
-    formant = score_formant(face, voice)
+    formant = score_formant(face, voice)  # kept for output; not used in raw_score
+
+    # Pitch: range-based scoring anchored to face-apparent gender
+    if voice.pitch_mean > 0:
+        face_gender = "female" if face.gender_dist.female > face.gender_dist.male else "male"
+        if face_gender == "female":
+            expected_low, expected_high = 165, 255
+        else:
+            expected_low, expected_high = 85, 180
+
+        if expected_low <= voice.pitch_mean <= expected_high:
+            pitch = 1.0
+        else:
+            distance = min(
+                abs(voice.pitch_mean - expected_low),
+                abs(voice.pitch_mean - expected_high),
+            )
+            pitch = max(0.0, 1.0 - distance / 200)
+        pitch = round(float(pitch), 4)
+    else:
+        logger.debug("Pitch unavailable — returning neutral score")
+        pitch = NEUTRAL_SCORE
 
     raw_score = (
         WEIGHT_GENDER * gender +
-        WEIGHT_AGE * age +
         WEIGHT_PITCH * pitch +
-        WEIGHT_FORMANT * formant
+        WEIGHT_AGE * age
     )
 
-    # Confidence: minimum of face and voice confidence
-    confidence = min(face.confidence, voice.confidence)
+    # Confidence: weighted average — less harsh than min()
+    confidence = 0.6 * voice.confidence + 0.4 * face.confidence
 
     # Final score scaled by confidence
     final_score = raw_score * confidence

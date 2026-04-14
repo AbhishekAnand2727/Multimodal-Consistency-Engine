@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multimodal Consistency Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0d1117;
+    --surface:  #161b22;
+    --surface2: #1c2333;
+    --border:   #30363d;
+    --text:     #e6edf3;
+    --muted:    #7d8590;
+    --green:    #3fb950;
+    --yellow:   #d29922;
+    --red:      #f85149;
+    --accent:   #58a6ff;
+    --accent2:  #1f6feb;
+    --radius:   12px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    padding: 40px 20px 80px;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+  header .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(88,166,255,.1);
+    border: 1px solid rgba(88,166,255,.25);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 999px;
+    margin-bottom: 16px;
+  }
+  header h1 {
+    font-size: clamp(22px, 4vw, 32px);
+    font-weight: 700;
+    letter-spacing: -.5px;
+  }
+  header p {
+    color: var(--muted);
+    margin-top: 8px;
+    font-size: 15px;
+  }
+  .header-nav {
+    margin-top: 16px;
+  }
+  .header-nav a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 13px;
+    border: 1px solid rgba(88,166,255,.25);
+    padding: 4px 14px;
+    border-radius: 999px;
+    transition: background .15s;
+  }
+  .header-nav a:hover { background: rgba(88,166,255,.1); }
+
+  /* ── Demo banner ── */
+  #demo-banner {
+    display: none;
+    background: rgba(210,153,34,.08);
+    border: 1px solid rgba(210,153,34,.3);
+    color: var(--yellow);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+
+  /* ── Loading state ── */
+  #loading-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .spinner-ring {
+    display: inline-block;
+    width: 28px; height: 28px;
+    border: 3px solid rgba(88,166,255,.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    margin-bottom: 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Section title ── */
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+
+  /* ── Overview cards ── */
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 40px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 20px 16px;
+  }
+  .stat-card .label {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 8px;
+  }
+  .stat-card .value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+  .stat-card .sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .stat-card.accent-green .value { color: var(--green); }
+  .stat-card.accent-yellow .value { color: var(--yellow); }
+  .stat-card.accent-blue .value { color: var(--accent); }
+
+  /* ── Card wrapper ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    text-align: left;
+    padding: 10px 14px;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  thead th:hover { color: var(--accent); }
+  thead th .sort-icon { margin-left: 4px; opacity: .45; }
+  thead th.sorted .sort-icon { opacity: 1; color: var(--accent); }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background .1s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  td {
+    padding: 11px 14px;
+    color: var(--text);
+    vertical-align: middle;
+  }
+  td.name { font-weight: 500; color: var(--accent); }
+
+  /* ── Score value ── */
+  .score-val {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .score-val.high  { color: var(--green); }
+  .score-val.mid   { color: var(--yellow); }
+  .score-val.low   { color: var(--red); }
+
+  /* ── Status badge ── */
+  .badge-status {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+  .badge-status.good   { background: rgba(63,185,80,.15);  color: var(--green); border: 1px solid rgba(63,185,80,.3); }
+  .badge-status.medium { background: rgba(210,153,34,.15); color: var(--yellow); border: 1px solid rgba(210,153,34,.3); }
+  .badge-status.poor   { background: rgba(248,81,73,.15);  color: var(--red);   border: 1px solid rgba(248,81,73,.3); }
+
+  /* ── View button / link ── */
+  a.btn-view, button.btn-view {
+    display: inline-block;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background .15s, border-color .15s;
+    font-family: inherit;
+  }
+  a.btn-view:hover, button.btn-view:hover {
+    background: rgba(88,166,255,.1);
+    border-color: var(--accent);
+  }
+  button.btn-view:disabled {
+    opacity: .35;
+    cursor: not-allowed;
+    color: var(--muted);
+  }
+
+  /* ── Charts ── */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  @media (max-width: 640px) { .charts-grid { grid-template-columns: 1fr; } }
+
+  .chart-bars { margin-top: 14px; }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .bar-label {
+    width: 90px;
+    font-size: 12px;
+    color: var(--muted);
+    flex-shrink: 0;
+    text-align: right;
+  }
+  .bar-track {
+    flex: 1;
+    height: 10px;
+    background: var(--surface2);
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    transition: width .4s ease;
+  }
+  .bar-fill.green  { background: var(--green); }
+  .bar-fill.yellow { background: var(--yellow); }
+  .bar-fill.red    { background: var(--red); }
+  .bar-count {
+    width: 28px;
+    font-size: 12px;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Alerts ── */
+  .alert-list { margin-top: 4px; }
+  .alert-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+  .alert-item:last-child { margin-bottom: 0; }
+  .alert-item.alert-red    { background: rgba(248,81,73,.08);  border: 1px solid rgba(248,81,73,.2); }
+  .alert-item.alert-yellow { background: rgba(210,153,34,.08); border: 1px solid rgba(210,153,34,.2); }
+  .alert-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .alert-text strong { display: block; font-weight: 600; margin-bottom: 2px; }
+  .alert-text span { color: var(--muted); font-size: 12px; }
+  .alert-empty {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 10px 0;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="badge">&#9641; Dashboard</div>
+    <h1>Multimodal Consistency Dashboard</h1>
+    <p>System-wide video analysis insights</p>
+    <div class="header-nav">
+      <a href="/">&#8592; Single Video Analyzer</a>
+    </div>
+  </header>
+
+  <!-- Demo mode banner (shown when backend unreachable) -->
+  <div id="demo-banner">&#9888; Demo mode — backend unreachable, showing sample data</div>
+
+  <!-- Loading state -->
+  <div id="loading-state">
+    <div class="spinner-ring"></div>
+    <div>Loading video results&hellip;</div>
+  </div>
+
+  <!-- Main content (hidden until data loads) -->
+  <div id="main-content" style="display:none;">
+
+    <!-- Overview Stats -->
+    <p class="section-title">Overview</p>
+    <div class="overview-grid" id="overview-grid"></div>
+
+    <!-- Video Table -->
+    <div class="card">
+      <p class="section-title" style="margin-bottom:18px;">All Videos</p>
+      <div class="table-wrap">
+        <table id="video-table">
+          <thead>
+            <tr>
+              <th data-col="name">Video Name <span class="sort-icon">&#8597;</span></th>
+              <th data-col="overall">Overall Score <span class="sort-icon">&#8597;</span></th>
+              <th data-col="gender">Gender Score <span class="sort-icon">&#8597;</span></th>
+              <th data-col="age">Age Score <span class="sort-icon">&#8597;</span></th>
+              <th data-col="confidence">Confidence <span class="sort-icon">&#8597;</span></th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+      <div class="card" style="margin-bottom:0;">
+        <p class="section-title">Score Distribution</p>
+        <div class="chart-bars" id="score-chart"></div>
+      </div>
+      <div class="card" style="margin-bottom:0;">
+        <p class="section-title">Confidence Distribution</p>
+        <div class="chart-bars" id="conf-chart"></div>
+      </div>
+    </div>
+    <div style="margin-bottom:24px;"></div>
+
+    <!-- Alerts -->
+    <div class="card">
+      <p class="section-title" style="margin-bottom:16px;">Alerts</p>
+      <div class="alert-list" id="alert-list"></div>
+    </div>
+
+  </div><!-- /#main-content -->
+
+</div><!-- /.container -->
+
+<script>
+// ── Demo fallback data ────────────────────────────────────────
+const DUMMY_VIDEOS = [
+  { job_id: null, name: "speaker_interview_en.mp4",  overall: 0.88, gender: 0.91, age: 0.82, confidence: 0.94 },
+  { job_id: null, name: "news_anchor_dubbed_hi.mp4", overall: 0.79, gender: 0.83, age: 0.74, confidence: 0.87 },
+  { job_id: null, name: "documentary_voice.mp4",     overall: 0.72, gender: 0.70, age: 0.68, confidence: 0.78 },
+  { job_id: null, name: "cartoon_dub_mr.mp4",        overall: 0.61, gender: 0.55, age: 0.64, confidence: 0.69 },
+  { job_id: null, name: "lecture_sync_ta.mp4",       overall: 0.84, gender: 0.86, age: 0.80, confidence: 0.90 },
+  { job_id: null, name: "movie_scene_bn.mp4",        overall: 0.47, gender: 0.42, age: 0.53, confidence: 0.58 },
+  { job_id: null, name: "podcast_dub_te.mp4",        overall: 0.76, gender: 0.78, age: 0.71, confidence: 0.83 },
+  { job_id: null, name: "ad_voiceover_kn.mp4",       overall: 0.38, gender: 0.31, age: 0.45, confidence: 0.52 },
+  { job_id: null, name: "sports_commentary.mp4",     overall: 0.91, gender: 0.93, age: 0.88, confidence: 0.95 },
+  { job_id: null, name: "tutorial_dubbed_ml.mp4",    overall: 0.55, gender: 0.58, age: 0.50, confidence: 0.63 },
+];
+
+let VIDEOS = [];
+
+// ── Map API item to dashboard row ─────────────────────────────
+function mapApiItem(item) {
+  return {
+    job_id:     item.job_id,
+    name:       item.filename,
+    overall:    item.overall_score,
+    gender:     item.components.gender,
+    age:        item.components.age,
+    confidence: item.confidence,
+  };
+}
+
+// ── Fetch from backend, fall back to demo data ────────────────
+async function fetchVideos() {
+  try {
+    const res = await fetch('/videos');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const items = await res.json();
+    VIDEOS = items.map(mapApiItem);
+  } catch (_) {
+    VIDEOS = DUMMY_VIDEOS;
+    document.getElementById('demo-banner').style.display = 'block';
+  }
+  document.getElementById('loading-state').style.display = 'none';
+  document.getElementById('main-content').style.display  = 'block';
+  renderAll();
+}
+
+function renderAll() {
+  renderOverview();
+  renderTable();
+  renderCharts();
+  renderAlerts();
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function scoreClass(v) { return v > 0.75 ? "high" : v >= 0.5 ? "mid" : "low"; }
+function statusLabel(v) { return v > 0.75 ? "Good" : v >= 0.5 ? "Medium" : "Poor"; }
+function statusClass(v) { return v > 0.75 ? "good" : v >= 0.5 ? "medium" : "poor"; }
+function fmt(v)  { return v.toFixed(2); }
+
+// ── Overview cards ────────────────────────────────────────────
+function renderOverview() {
+  const n = VIDEOS.length;
+  if (n === 0) {
+    document.getElementById("overview-grid").innerHTML =
+      '<p style="color:var(--muted);font-size:13px;grid-column:1/-1">No completed analyses yet.</p>';
+    return;
+  }
+  const avgScore = VIDEOS.reduce((s, v) => s + v.overall, 0) / n;
+  const avgConf  = VIDEOS.reduce((s, v) => s + v.confidence, 0) / n;
+  const hiQ      = VIDEOS.filter(v => v.overall > 0.75).length;
+
+  const cards = [
+    { label: "Total Videos",     value: n,           sub: "processed", cls: "" },
+    { label: "Avg Overall Score", value: fmt(avgScore), sub: avgScore > 0.75 ? "Above threshold" : "Below threshold", cls: avgScore > 0.75 ? "accent-green" : "accent-yellow" },
+    { label: "Avg Confidence",    value: fmt(avgConf),  sub: "across all segments", cls: "accent-blue" },
+    { label: "High Quality",      value: hiQ,           sub: `${((hiQ/n)*100).toFixed(0)}% of videos (score > 0.75)`, cls: "accent-green" },
+    { label: "Needs Review",      value: VIDEOS.filter(v => v.overall < 0.5).length, sub: "score < 0.50", cls: "" },
+  ];
+
+  document.getElementById("overview-grid").innerHTML = cards.map(c => `
+    <div class="stat-card ${c.cls}">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value}</div>
+      <div class="sub">${c.sub}</div>
+    </div>
+  `).join("");
+}
+
+// ── Table ─────────────────────────────────────────────────────
+let sortCol = "overall";
+let sortAsc  = false;
+
+function renderTable() {
+  const sorted = [...VIDEOS].sort((a, b) => {
+    const va = a[sortCol], vb = b[sortCol];
+    if (typeof va === "string") return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortAsc ? va - vb : vb - va;
+  });
+
+  document.getElementById("table-body").innerHTML = sorted.map(v => {
+    const action = v.job_id
+      ? `<a class="btn-view" href="/?job_id=${encodeURIComponent(v.job_id)}">View</a>`
+      : `<button class="btn-view" disabled title="Demo data — no real job">View</button>`;
+    return `
+      <tr>
+        <td class="name">${v.name}</td>
+        <td><span class="score-val ${scoreClass(v.overall)}">${fmt(v.overall)}</span></td>
+        <td><span class="score-val ${scoreClass(v.gender)}">${fmt(v.gender)}</span></td>
+        <td><span class="score-val ${scoreClass(v.age)}">${fmt(v.age)}</span></td>
+        <td><span class="score-val ${scoreClass(v.confidence)}">${fmt(v.confidence)}</span></td>
+        <td><span class="badge-status ${statusClass(v.overall)}">${statusLabel(v.overall)}</span></td>
+        <td>${action}</td>
+      </tr>`;
+  }).join("");
+
+  // Sort header highlight
+  document.querySelectorAll("thead th[data-col]").forEach(th => {
+    th.classList.toggle("sorted", th.dataset.col === sortCol);
+    const icon = th.querySelector(".sort-icon");
+    icon.textContent = th.dataset.col === sortCol ? (sortAsc ? "↑" : "↓") : "↕";
+  });
+}
+
+document.querySelectorAll("thead th[data-col]").forEach(th => {
+  th.addEventListener("click", () => {
+    if (sortCol === th.dataset.col) sortAsc = !sortAsc;
+    else { sortCol = th.dataset.col; sortAsc = false; }
+    renderTable();
+  });
+});
+
+// ── Charts ────────────────────────────────────────────────────
+function buildBuckets(values, buckets) {
+  return buckets.map(b => ({
+    label: b.label,
+    count: values.filter(v => v >= b.min && v < b.max).length,
+    colorClass: b.color,
+  }));
+}
+
+function renderChart(containerId, buckets) {
+  const max = Math.max(...buckets.map(b => b.count), 1);
+  document.getElementById(containerId).innerHTML = buckets.map(b => `
+    <div class="bar-row">
+      <span class="bar-label">${b.label}</span>
+      <div class="bar-track">
+        <div class="bar-fill ${b.colorClass}" style="width:${(b.count / max) * 100}%"></div>
+      </div>
+      <span class="bar-count">${b.count}</span>
+    </div>
+  `).join("");
+}
+
+function renderCharts() {
+  const scoreBuckets = [
+    { label: "0.75 – 1.00", min: 0.75, max: 1.01, color: "green" },
+    { label: "0.50 – 0.75", min: 0.50, max: 0.75, color: "yellow" },
+    { label: "0.25 – 0.50", min: 0.25, max: 0.50, color: "red" },
+    { label: "0.00 – 0.25", min: 0.00, max: 0.25, color: "red" },
+  ];
+  const confBuckets = [
+    { label: "0.80 – 1.00", min: 0.80, max: 1.01, color: "green" },
+    { label: "0.60 – 0.80", min: 0.60, max: 0.80, color: "yellow" },
+    { label: "0.40 – 0.60", min: 0.40, max: 0.60, color: "red" },
+    { label: "0.00 – 0.40", min: 0.00, max: 0.40, color: "red" },
+  ];
+  renderChart("score-chart", buildBuckets(VIDEOS.map(v => v.overall), scoreBuckets));
+  renderChart("conf-chart",  buildBuckets(VIDEOS.map(v => v.confidence), confBuckets));
+}
+
+// ── Alerts ────────────────────────────────────────────────────
+function renderAlerts() {
+  // Low overall score
+  const low = VIDEOS.filter(v => v.overall < 0.5);
+
+  // Gender mismatch: gender component score is the face-vs-voice gender
+  // distribution similarity (dot product). Low value means the face gender
+  // and voice gender disagree. Exclude already-flagged low-score videos.
+  const mismatch = VIDEOS.filter(v => v.gender < 0.6 && v.overall >= 0.5);
+
+  const items = [
+    ...low.map(v => ({
+      cls:    "alert-red",
+      icon:   "&#9888;",
+      title:  `Low score — ${v.name}`,
+      detail: `Overall score ${fmt(v.overall)} is below acceptable threshold (0.50)`,
+    })),
+    ...mismatch.map(v => ({
+      cls:    "alert-yellow",
+      icon:   "&#8680;",
+      title:  `Gender mismatch — ${v.name}`,
+      detail: `Gender compatibility score ${fmt(v.gender)} < 0.60 — face and voice gender distributions diverge`,
+    })),
+  ];
+
+  const list = document.getElementById("alert-list");
+  list.innerHTML = items.length === 0
+    ? `<p class="alert-empty">No alerts — all videos within acceptable range.</p>`
+    : items.map(a => `
+        <div class="alert-item ${a.cls}">
+          <span class="alert-icon">${a.icon}</span>
+          <div class="alert-text">
+            <strong>${a.title}</strong>
+            <span>${a.detail}</span>
+          </div>
+        </div>`).join("");
+}
+
+// ── Init ──────────────────────────────────────────────────────
+fetchVideos();
+</script>
+</body>
+</html>
